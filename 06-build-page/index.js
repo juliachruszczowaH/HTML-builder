@@ -1,31 +1,40 @@
 const fs = require('fs');
 const path = require('path');
-const { readdir } = require('fs/promises');
+const { readdir, rm, mkdir } = require('fs/promises');
 const assetsFolderPath = path.join(__dirname, './assets');
 const stylesFolderPath = path.join(__dirname, './styles');
 const templatesPath = path.join(__dirname, './components');
-const newPath = path.join(__dirname, './project-dist');
-const copiedPath = path.join(__dirname, 'project-dist', './assets');
-const outputStreamCSS = fs.createWriteStream(path.join(__dirname, 'project-dist', 'style.css'));
-const outputStreamHTML = fs.createWriteStream(path.join(__dirname, 'project-dist', 'index.html'));
-
-async function createFolder(folder) {
-  fs.mkdir(folder, { recursive: true }, (err) => {
-    if (err) console.log(`Error creating directory: ${err}`);
-  });
+const newPath = path.join(__dirname, 'project-dist');
+async function createFolder(path) {
+  try {
+    await access(path);
+  } catch (err) {
+    try {
+      await mkdir(path, { recursive: true });
+    } catch (error) {
+      console.error(error);
+    }
+  } finally {
+    try {
+      await rm(path, { recursive: true, force: true });
+      await mkdir(path, { recursive: true });
+    } catch (err) {
+      console.error(err);
+    }
+  }
+  return path;
 }
 
 async function copyDirectory(folder, outputFolder) {
+  const pp = await createFolder(outputFolder);
   try {
     const files = await readdir(folder, { withFileTypes: true });
     files.forEach((file) => {
       if (file.isFile()) {
-        fs.createReadStream(path.join(folder, `/${file.name}`)).pipe(
-          fs.createWriteStream(path.join(outputFolder, file.name))
-        );
+        fs.createReadStream(path.join(folder, `/${file.name}`)).pipe(fs.createWriteStream(path.join(pp, file.name)));
       } else {
-        createFolder(path.join(outputFolder, `/${file.name}`)).then(() => {
-          copyDirectory(path.join(folder, `/${file.name}`), path.join(outputFolder, `/${file.name}`));
+        createFolder(path.join(outputFolder, file.name)).then((p) => {
+          copyDirectory(path.join(folder, file.name), p);
         });
       }
     });
@@ -33,12 +42,14 @@ async function copyDirectory(folder, outputFolder) {
     console.error(err);
   }
 }
-async function bundleCss() {
+async function bundleCss(projectPath) {
   try {
     const files = await readdir(stylesFolderPath, { withFileTypes: true });
-    files.forEach((file) => {
+    const outputStreamCSS = fs.createWriteStream(path.join(projectPath, 'style.css'));
+    files.forEach(async (file) => {
       if (file.isFile() && path.extname(file.name) == '.css') {
         const stream = fs.createReadStream(path.join(stylesFolderPath, file.name));
+
         stream.on('data', (partData) => outputStreamCSS.write(`${partData}\n`));
       }
     });
@@ -46,10 +57,11 @@ async function bundleCss() {
     console.error(err);
   }
 }
-async function createHTML() {
+async function createHTML(projectPath) {
   try {
     const files = await readdir(templatesPath, { withFileTypes: true });
-    const streamTemplate = await fs.createReadStream(path.resolve(__dirname, 'template.html'));
+    const streamTemplate = fs.createReadStream(path.resolve(__dirname, 'template.html'));
+    const outputStreamHTML = fs.createWriteStream(path.join(projectPath, 'index.html'));
     streamTemplate.on('data', (tempData) => {
       let result = tempData.toString();
       files.forEach((file, index) => {
@@ -72,10 +84,16 @@ async function createHTML() {
     console.error(err);
   }
 }
-createFolder(newPath).then(async () => {
-  createFolder(copiedPath);
-});
 
-copyDirectory(assetsFolderPath, copiedPath);
-bundleCss();
-createHTML();
+async function createPage(newPath) {
+  try {
+    const folder = await createFolder(newPath);
+    copyDirectory(assetsFolderPath, path.join(folder, 'assets'));
+    createHTML(newPath);
+    bundleCss(newPath);
+  } catch (err) {
+    console.log(err);
+  }
+}
+
+createPage(newPath);

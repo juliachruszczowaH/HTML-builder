@@ -1,14 +1,24 @@
 const fs = require('fs');
 const path = require('path');
-const { readdir, mkdir, rm } = require('fs/promises');
+const { readdir, mkdir, rm, access } = require('fs/promises');
 const folderPath = path.resolve(__dirname, './files');
-const copiedPath = path.join(__dirname, './files-copy');
+const copiedPath = path.join(__dirname, 'files-copy');
 async function createFolder(path) {
   try {
-    await rm(path, { recursive: true });
-    await mkdir(path, { recursive: true });
+    await access(path);
   } catch (err) {
-    console.error(err);
+    try {
+      await mkdir(path, { recursive: true });
+    } catch (error) {
+      console.error(error);
+    }
+  } finally {
+    try {
+      await rm(path, { recursive: true, force: true });
+      await mkdir(path, { recursive: true });
+    } catch (err) {
+      console.error(err);
+    }
   }
 }
 
