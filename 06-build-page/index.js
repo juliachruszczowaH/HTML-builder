@@ -5,6 +5,14 @@ const assetsFolderPath = path.join(__dirname, './assets');
 const stylesFolderPath = path.join(__dirname, './styles');
 const templatesPath = path.join(__dirname, './components');
 const newPath = path.join(__dirname, 'project-dist');
+async function readFileData(filePath) {
+  let data = '';
+  const stream = fs.createReadStream(filePath, 'utf-8');
+  for await (const chunk of stream) {
+    data += chunk;
+  }
+  return data;
+}
 async function createFolder(path) {
   try {
     await access(path);
@@ -48,9 +56,10 @@ async function bundleCss(projectPath) {
     const outputStreamCSS = fs.createWriteStream(path.join(projectPath, 'style.css'));
     files.forEach(async (file) => {
       if (file.isFile() && path.extname(file.name) == '.css') {
-        const stream = fs.createReadStream(path.join(stylesFolderPath, file.name));
-
-        stream.on('data', (partData) => outputStreamCSS.write(`${partData}\n`));
+        const stream = fs.createReadStream(path.join(stylesFolderPath, file.name), 'utf-8');
+        for await (const chunk of stream) {
+          outputStreamCSS.write(`${chunk.trim()}\n`);
+        }
       }
     });
   } catch (err) {
@@ -60,25 +69,23 @@ async function bundleCss(projectPath) {
 async function createHTML(projectPath) {
   try {
     const files = await readdir(templatesPath, { withFileTypes: true });
-    const streamTemplate = fs.createReadStream(path.resolve(__dirname, 'template.html'));
+    const streamTemplate = await readFileData(path.resolve(__dirname, 'template.html'));
     const outputStreamHTML = fs.createWriteStream(path.join(projectPath, 'index.html'));
-    streamTemplate.on('data', (tempData) => {
-      let result = tempData.toString();
-      files.forEach((file, index) => {
-        if (file.isFile() && path.extname(file.name) == '.html') {
-          const stream = fs.createReadStream(path.join(templatesPath, file.name));
-          stream.on('data', (partial) => {
-            result = result
-              .split(`{{${path.parse(file.name).name}}}`)
-              .join(`\n${partial.toString()}\n`)
-              .toString();
 
-            if (index === files.length - 1) {
-              outputStreamHTML.write(result);
-            }
-          });
+    let result = streamTemplate;
+    files.forEach(async(file, index) => {
+      if (file.isFile() && path.extname(file.name) == '.html') {
+        const partial = await readFileData(path.join(templatesPath, file.name));
+
+        result = result
+          .split(`{{${path.parse(file.name).name}}}`)
+          .join(`\n${partial.toString()}\n`)
+          .toString();
+
+        if (index === files.length - 1) {
+          outputStreamHTML.write(result);
         }
-      });
+      }
     });
   } catch (err) {
     console.error(err);

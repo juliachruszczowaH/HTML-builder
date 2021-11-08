@@ -7,10 +7,12 @@ const outputStream = fs.createWriteStream(path.join(__dirname, 'project-dist', '
 async function bundleCss() {
   try {
     const files = await readdir(folderPath, { withFileTypes: true });
-    files.forEach((file) => {
+    files.forEach(async (file) => {
       if (file.isFile() && path.extname(file.name) == '.css') {
-        const stream = fs.createReadStream(path.join(folderPath, file.name));
-        stream.on('data', (partData) => outputStream.write(`${partData}\n`));
+        const stream = fs.createReadStream(path.join(folderPath, file.name), 'utf-8');
+        for await (const chunk of stream) {
+          outputStream.write(`${chunk}\n`);
+        }
       }
     });
   } catch (err) {
